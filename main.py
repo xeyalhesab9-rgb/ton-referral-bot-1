@@ -11,9 +11,6 @@ ADMIN_ID = 8591374417                  # Admin Telegram ID-niz
 CHANNEL_USERNAME = "@meoww122134"      # Qrup istifadəçi adınız
 ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" # TON Pul kisəsi adresi
 
-# PythonAnywhere pulsuz hesabı üçün proxy ayarı
-apihelper.proxy = {'https': 'http://proxy.server:3128'}
-
 bot = telebot.TeleBot(TOKEN)
 
 # ==========================================
