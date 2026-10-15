@@ -179,6 +179,37 @@ def start_command(message):
         )
         bot.send_message(message.chat.id, welcome_text, reply_markup=main_keyboard(), parse_mode="Markdown")
 
+# ADMIN: İstifadəçinin balansını artırmaq
+@bot.message_handler(commands=['addbalance'])
+def admin_add_balance(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    args = message.text.split()
+    if len(args) < 3:
+        bot.reply_to(message, "❌ İstifadə qaydası:\n`/addbalance USER_ID MƏBLƏĞ`\nMəsələn: `/addbalance 123456789 1.5`", parse_mode="Markdown")
+        return
+        
+    try:
+        target_user_id = int(args[1])
+        amount = float(args[2])
+    except ValueError:
+        bot.reply_to(message, "❌ ID və məbləğ düzgün rəqəm olmalıdır!")
+        return
+        
+    target_user = get_user(target_user_id)
+    if not target_user:
+        bot.reply_to(message, "❌ Bu ID ilə istifadəçi bazada tapılmadı!")
+        return
+        
+    update_balance(target_user_id, amount)
+    bot.reply_to(message, f"✅ Uğurla artırıldı!\n👤 İstifadəçi ID: `{target_user_id}`\n💰 Əlavə olunan: **+{amount} TON**", parse_mode="Markdown")
+    
+    try:
+        bot.send_message(target_user_id, f"🎉 Admin tərəfən balansınıza **+{amount} TON** əlavə olundu!", parse_mode="Markdown")
+    except:
+        pass
+
 # ADMIN: Yeni promokod yaratmaq
 @bot.message_handler(commands=['createpromo'])
 def create_promo(message):
