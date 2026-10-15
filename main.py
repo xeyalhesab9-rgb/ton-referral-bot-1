@@ -60,6 +60,15 @@ def init_db():
         )
     ''')
     
+    # Tamamlanmış tapşırıqlar cədvəli əlavə olundu
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS completed_tasks (
+            user_id INTEGER,
+            task_id INTEGER,
+            PRIMARY KEY (user_id, task_id)
+        )
+    ''')
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS pending_proofs (
             proof_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,7 +156,7 @@ def sub_keyboard():
     return markup
 
 # ==========================================
-# KOMUTLAR & ADMİN ÖZƏLLİKLƏRİ
+# KOMUTLAR & ADMİN ÖZƏLLİklƏRİ
 # ==========================================
 @bot.message_handler(commands=['start'])
 def start_command(message):
@@ -179,7 +188,6 @@ def start_command(message):
         )
         bot.send_message(message.chat.id, welcome_text, reply_markup=main_keyboard(), parse_mode="Markdown")
 
-# ADMIN: İstifadəçinin balansını artırmaq (avtomatik qeydiyyat ilə)
 @bot.message_handler(commands=['addbalance'])
 def admin_add_balance(message):
     if message.from_user.id != ADMIN_ID:
@@ -216,7 +224,6 @@ def admin_add_balance(message):
     except:
         pass
 
-# ADMIN: Yeni promokod yaratmaq
 @bot.message_handler(commands=['createpromo'])
 def create_promo(message):
     if message.from_user.id != ADMIN_ID:
@@ -244,7 +251,6 @@ def create_promo(message):
         bot.reply_to(message, f"❌ Xəta baş verdi: {e}")
     conn.close()
 
-# İSTİFADƏÇİ: Admine yaz / Support
 @bot.message_handler(func=lambda message: message.text == '📞 Support')
 def support_start(message):
     msg = bot.reply_to(message, "✍️ Please write your message or question to the admin:", parse_mode="Markdown")
@@ -268,7 +274,6 @@ def process_support_message(message):
     except Exception as e:
         bot.reply_to(message, "❌ Failed to send message to admin. Please try again later.")
 
-# İSTİFADƏÇİ: Promokod daxil etməsi
 @bot.message_handler(func=lambda message: message.text == '🎟️ Promo Code')
 def promo_code_start(message):
     msg = bot.reply_to(message, "🎟️ Please send your promo code:", parse_mode="Markdown")
@@ -312,7 +317,6 @@ def process_promo_code(message):
     
     bot.reply_to(message, f"🎉 **Promo Code Activated Successfully!**\n\nYou received **+{reward} TON** in your main balance!", parse_mode="Markdown")
 
-# GÜNDƏLİK BONUS
 @bot.message_handler(func=lambda message: message.text == '🎁 Daily Bonus')
 def daily_bonus(message):
     user_id = message.from_user.id
@@ -342,7 +346,6 @@ def daily_bonus(message):
     
     bot.reply_to(message, f"🎉 **Daily Bonus Claimed!**\n\nYou received **+{bonus_amount} TON** in your main balance. Come back tomorrow for more!", parse_mode="Markdown")
 
-# LİDERLƏR LÖVHƏSİ
 @bot.message_handler(func=lambda message: message.text == '🏆 Leaderboard')
 def show_leaderboard(message):
     conn = sqlite3.connect('users.db')
@@ -371,7 +374,6 @@ def show_leaderboard(message):
     text += "\n🔗 Share your referral link to reach the top!"
     bot.reply_to(message, text, parse_mode="Markdown")
 
-# ADMIN COMMANDS
 @bot.message_handler(commands=['users'])
 def show_all_users(message):
     user_id = message.from_user.id
@@ -497,11 +499,16 @@ def show_referral(message):
     msg = f"🔗 **Your Personal Referral Link:**\n`{ref_link}`\n\n📌 Share to earn **0.01 TON** per referral!"
     bot.reply_to(message, msg, parse_mode="Markdown")
 
+# Artıq yerinə yetirilmiş tapşırıqlar siyahıdan gizlədilir
 @bot.message_handler(func=lambda message: message.text == '📋 Earn (Tasks)')
 def show_tasks(message):
+    user_id = message.from_user.id
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT task_id, title, reward, link FROM tasks")
+    cursor.execute("""
+        SELECT task_id, title, reward, link FROM tasks 
+        WHERE task_id NOT IN (SELECT task_id FROM completed_tasks WHERE user_id = ?)
+    """, (user_id,))
     tasks = cursor.fetchall()
     conn.close()
     
@@ -581,7 +588,7 @@ def handle_screenshot(message):
     username_str = f"@{username}" if username else f"ID: {user_id}"
     
     markup = types.InlineKeyboardMarkup()
-    btn_approve = types.InlineKeyboardButton("✅ Approve & Pay", callback_data=f"tapp_{proof_id}")
+    btn_approve = types.InlineKeyboardButton("✅ Approve & Pay", callback_data=f"tapp_{proof_id}_{task_id}")
     btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"trej_{proof_id}")
     markup.add(btn_approve, btn_reject)
     
@@ -617,7 +624,16 @@ def creator_task_action(call):
         return
         
     if action == "tapp":
+        task_id = int(data[2])
         update_balance(worker_id, reward)
+        
+        # Tapşırıq təsdiqlənəndə həmin istifadəçi üçün tamamlanmış kimi qeyd olunur
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO completed_tasks (user_id, task_id) VALUES (?, ?)", (worker_id, task_id))
+        conn.commit()
+        conn.close()
+
         bot.answer_callback_query(call.id, "✅ Approved! Reward paid to the worker.")
         try:
             bot.edit_message_caption(caption=call.message.caption + "\n\n**STATUS: APPROVED & PAID ✅**", reply_markup=None, chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
