@@ -1,15 +1,16 @@
 import time
 import sqlite3
+import os
 import telebot
-from telebot import types, apihelper
+from telebot import types
 from threading import Thread
 from flask import Flask
 from datetime import datetime, timedelta
 
 # ==========================================
-# AYARLAR
+# AYARLAR (Token Render Environment-dən oxunur)
 # ==========================================
-TOKEN = "8938147451:AAHC2qbk_cMQHZUSoqnWdsL6T4k73ZTXKuw"  # Düzgün Tokeniniz
+TOKEN = os.getenv("TOKEN")
 ADMIN_ID = 8591374417                  
 CHANNEL_USERNAME = "@meoww122134"      
 ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" 
