@@ -638,7 +638,6 @@ def process_create_task(message):
         cursor = conn.cursor()
         cursor.execute("SELECT balance, ref_balance FROM users WHERE user_id = ?", (user_id,))
         user = cursor.fetchone()
-        conn.close()
         
         balance = user[0] if user else 0.0
         ref_balance = user[1] if user else 0.0
@@ -646,6 +645,7 @@ def process_create_task(message):
         
         if reward < 0.01:
             bot.reply_to(message, "❌ Minimum reward per task must be at least 0.01 TON.")
+            conn.close()
             return
             
         fee = reward * 0.10
@@ -659,6 +659,7 @@ def process_create_task(message):
                 f"💳 Your Total Balance: **{total_balance:.2f} TON**",
                 parse_mode="Markdown"
             )
+            conn.close()
             return
             
         if balance >= total_cost:
@@ -669,13 +670,30 @@ def process_create_task(message):
             new_balance = 0.0
             new_ref_balance = ref_balance - remaining
             
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
         cursor.execute("UPDATE users SET balance = ?, ref_balance = ? WHERE user_id = ?", (new_balance, new_ref_balance, user_id))
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (fee, ADMIN_ID))
         cursor.execute("INSERT INTO tasks (creator_id, title, reward, link) VALUES (?, ?, ?, ?)", (user_id, title, reward, link))
+        
+        cursor.execute("SELECT user_id FROM users")
+        all_users = cursor.fetchall()
+        
         conn.commit()
         conn.close()
+        
+        task_notif = (
+            f"🔔 **Yeni Tapşırıq Əlavə Olundu!**\n\n"
+            f"📌 **Başlıq:** {title}\n"
+            f"💰 **Mükafat:** {reward} TON\n\n"
+            f"📋 Tapşırığı yerinə yetirmək üçün 'Earn (Tasks)' bölməsinə keçin!"
+        )
+        
+        for u in all_users:
+            target_id = u[0]
+            try:
+                bot.send_message(target_id, task_notif, parse_mode="Markdown")
+                time.sleep(0.03)
+            except:
+                pass
         
         bot.reply_to(
             message, 
@@ -683,7 +701,8 @@ def process_create_task(message):
             f"📌 Title: {title}\n"
             f"💰 Reward: {reward} TON\n"
             f"📊 Fee deducted (10%): {fee:.2f} TON\n"
-            f"🔗 Link: {link}", 
+            f"🔗 Link: {link}\n\n"
+            f"📢 Bütün istifadəçilərə bildiriş göndərildi!", 
             parse_mode="Markdown"
         )
     except Exception as e:
