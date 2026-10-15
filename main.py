@@ -2,16 +2,37 @@ import time
 import sqlite3
 import telebot
 from telebot import types, apihelper
+from threading import Thread
+from flask import Flask
 
 # ==========================================
 # AYARLAR
 # ==========================================
-TOKEN = "8938147451:AAF4R_Yg_CR3vytE1BvHYlwu_SgLZ8PNuQo"  # Öz bot token-inizi yazın
+TOKEN = "8938147451:AAF4R_Yg_Q..."  # Öz bot token-inizi yazın
 ADMIN_ID = 8591374417                  # Admin Telegram ID-niz
 CHANNEL_USERNAME = "@meoww122134"      # Qrup istifadəçi adınız
 ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" # TON Pul kisəsi adresi
 
+# Render-də proxy lazım olmadığı üçün proxy sətrini sildik və ya şərhə aldıq:
+# apihelper.proxy = {'https': 'http://proxy.server:3128'}
+
 bot = telebot.TeleBot(TOKEN)
+
+# ==========================================
+# RENDER PORT ÜÇÜN FLASK SERVER
+# ==========================================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running 24/7!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
 
 # ==========================================
 # VERİTABANI KURULUMU (SQLite)
@@ -169,7 +190,6 @@ def show_all_users(message):
         uid, bal, ref_bal = u
         text += f"👤 ID: `{uid}`\n💳 Əsas: **{bal:.2f} TON** | 🔗 Ref: **{ref_bal:.2f} TON**\n-------------------\n"
 
-    # Mesaj çox uzun olarsa hissələrə bölürük
     if len(text) > 4000:
         for x in range(0, len(text), 4000):
             bot.send_message(message.chat.id, text[x:x+4000], parse_mode="Markdown")
@@ -204,7 +224,7 @@ def broadcast_message(message):
         try:
             bot.send_message(target_id, msg_to_send, parse_mode="Markdown")
             success += 1
-            time.sleep(0.05) # Telegram spama düşməmək üçün kiçik fasilə
+            time.sleep(0.05)
         except:
             failed += 1
 
@@ -553,6 +573,7 @@ def process_withdraw_address(message, balance):
 # ==========================================
 if __name__ == '__main__':
     print("Bot 7/24 modunda başladılır...")
+    keep_alive()  # Render port tələbi üçün Flask serverini işə salır
     while True:
         try:
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
