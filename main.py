@@ -6,7 +6,7 @@ from telebot import types, apihelper
 # ==========================================
 # AYARLAR
 # ==========================================
-TOKEN = "8938147451:AAF4R_Yg_Q..."  # Öz bot token-inizi yazın
+TOKEN = "8938147451:AAF4R_Yg_CR3vytE1BvHYlwu_SgLZ8PNuQo"  # Öz bot token-inizi yazın
 ADMIN_ID = 8591374417                  # Admin Telegram ID-niz
 CHANNEL_USERNAME = "@meoww122134"      # Qrup istifadəçi adınız
 ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" # TON Pul kisəsi adresi
