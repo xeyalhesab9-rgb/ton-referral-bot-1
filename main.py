@@ -8,7 +8,8 @@ from flask import Flask
 # ==========================================
 # AYARLAR
 # ==========================================
-TOKEN "8938147451:AAHC2qbk_cMQHZUSoqnWdsL6T4k73ZTXKuw"  # Öz bot token-inizi yazın
+TOKEN = "8938147451:AAHC2qbk_cMQHZUSoqnWdsL6T4k73ZTXKuw"
+  # Öz bot token-inizi yazın
 ADMIN_ID = 8591374417                  # Admin Telegram ID-niz
 CHANNEL_USERNAME = "@meoww122134"      # Qrup istifadəçi adınız
 ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" # TON Pul kisəsi adresi
