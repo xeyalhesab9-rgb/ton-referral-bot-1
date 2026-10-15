@@ -179,7 +179,7 @@ def start_command(message):
         )
         bot.send_message(message.chat.id, welcome_text, reply_markup=main_keyboard(), parse_mode="Markdown")
 
-# ADMIN: İstifadəçinin balansını artırmaq
+# ADMIN: İstifadəçinin balansını artırmaq (avtomatik qeydiyyat ilə)
 @bot.message_handler(commands=['addbalance'])
 def admin_add_balance(message):
     if message.from_user.id != ADMIN_ID:
@@ -197,10 +197,16 @@ def admin_add_balance(message):
         bot.reply_to(message, "❌ ID və məbləğ düzgün rəqəm olmalıdır!")
         return
         
-    target_user = get_user(target_user_id)
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (target_user_id,))
+    target_user = cursor.fetchone()
+    
     if not target_user:
-        bot.reply_to(message, "❌ Bu ID ilə istifadəçi bazada tapılmadı!")
-        return
+        cursor.execute("INSERT OR IGNORE INTO users (user_id, balance, ref_balance) VALUES (?, 0.0, 0.0)", (target_user_id,))
+        conn.commit()
+        
+    conn.close()
         
     update_balance(target_user_id, amount)
     bot.reply_to(message, f"✅ Uğurla artırıldı!\n👤 İstifadəçi ID: `{target_user_id}`\n💰 Əlavə olunan: **+{amount} TON**", parse_mode="Markdown")
