@@ -60,7 +60,6 @@ def init_db():
         )
     ''')
     
-    # Tamamlanmış tapşırıqlar cədvəli əlavə olundu
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS completed_tasks (
             user_id INTEGER,
@@ -136,6 +135,7 @@ def main_keyboard():
     btn_balance = types.KeyboardButton('💰 Balance')
     btn_ref = types.KeyboardButton('🔗 Referral Link')
     btn_tasks = types.KeyboardButton('📋 Earn (Tasks)')
+    btn_my_tasks = types.KeyboardButton('📌 My Tasks')
     btn_bonus = types.KeyboardButton('🎁 Daily Bonus')
     btn_promo = types.KeyboardButton('🎟️ Promo Code')
     btn_leaderboard = types.KeyboardButton('🏆 Leaderboard')
@@ -144,7 +144,7 @@ def main_keyboard():
     btn_deposit = types.KeyboardButton('💎 Deposit')
     btn_withdraw = types.KeyboardButton('💸 Withdraw')
     
-    markup.add(btn_balance, btn_ref, btn_tasks, btn_bonus, btn_promo, btn_leaderboard, btn_support, btn_create_task, btn_deposit, btn_withdraw)
+    markup.add(btn_balance, btn_ref, btn_tasks, btn_my_tasks, btn_bonus, btn_promo, btn_leaderboard, btn_support, btn_create_task, btn_deposit, btn_withdraw)
     return markup
 
 def sub_keyboard():
@@ -156,7 +156,7 @@ def sub_keyboard():
     return markup
 
 # ==========================================
-# KOMUTLAR & ADMİN ÖZƏLLİklƏRİ
+# KOMUTLAR & ADMİN ÖZƏLLİKLƏRİ
 # ==========================================
 @bot.message_handler(commands=['start'])
 def start_command(message):
@@ -449,12 +449,12 @@ def show_stats(message):
     total_tasks = cursor.fetchone()[0]
     conn.close()
     
-    stats_text = (
+    stats_stats = (
         f"📊 **Bot Statistikası:**\n\n"
         f"👥 Ümumi İstifadəçi Sayı: **{total_users}**\n"
         f"📋 Ümumi Yaradılan Tapşırıqlar: **{total_tasks}**"
     )
-    bot.reply_to(message, stats_text, parse_mode="Markdown")
+    bot.reply_to(message, stats_stats, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_sub")
 def callback_check_sub(call):
@@ -499,7 +499,6 @@ def show_referral(message):
     msg = f"🔗 **Your Personal Referral Link:**\n`{ref_link}`\n\n📌 Share to earn **0.01 TON** per referral!"
     bot.reply_to(message, msg, parse_mode="Markdown")
 
-# Artıq yerinə yetirilmiş tapşırıqlar siyahıdan gizlədilir
 @bot.message_handler(func=lambda message: message.text == '📋 Earn (Tasks)')
 def show_tasks(message):
     user_id = message.from_user.id
@@ -524,11 +523,33 @@ def show_tasks(message):
         
     bot.reply_to(message, "📋 **Available Tasks:**\nClick a task, complete it, and send a screenshot as proof!", reply_markup=markup, parse_mode="Markdown")
 
+# İSTİFADƏÇİNİN ÖZ YARATDIĞI TAPŞIRIQLAR (My Tasks)
+@bot.message_handler(func=lambda message: message.text == '📌 My Tasks')
+def show_my_tasks(message):
+    user_id = message.from_user.id
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT task_id, title, reward, link FROM tasks WHERE creator_id = ?", (user_id,))
+    tasks = cursor.fetchall()
+    conn.close()
+    
+    if not tasks:
+        bot.reply_to(message, "📭 You haven't created any tasks yet. Use '➕ Create Task' to create one!")
+        return
+        
+    text = "📌 **Your Created Tasks:**\n\n"
+    for task in tasks:
+        task_id, title, reward, link = task
+        text += f"🆔 ID: `{task_id}`\n📌 Title: **{title}**\n💰 Reward: {reward} TON\n🔗 Link: {link}\n-------------------\n"
+        
+    bot.reply_to(message, text, parse_mode="Markdown")
+
 user_active_task = {}
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("do_task_"))
 def task_clicked(call):
-    task_id = int(call.data.split("_")[2])
+    # Xətanın qarşısını almaq üçün təhlükəsiz şəkildə task_id-ni oxuyuruq
+    task_id = int(call.data.replace("do_task_", ""))
     user_id = call.from_user.id
     
     conn = sqlite3.connect('users.db')
@@ -627,7 +648,6 @@ def creator_task_action(call):
         task_id = int(data[2])
         update_balance(worker_id, reward)
         
-        # Tapşırıq təsdiqlənəndə həmin istifadəçi üçün tamamlanmış kimi qeyd olunur
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO completed_tasks (user_id, task_id) VALUES (?, ?)", (worker_id, task_id))
