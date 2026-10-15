@@ -4,18 +4,15 @@ import telebot
 from telebot import types, apihelper
 from threading import Thread
 from flask import Flask
+from datetime import datetime, timedelta
 
 # ==========================================
 # AYARLAR
 # ==========================================
-TOKEN = "8938147451:AAHC2qbk_cMQHZUSoqnWdsL6T4k73ZTXKuw"
-  # Öz bot token-inizi yazın
-ADMIN_ID = 8591374417                  # Admin Telegram ID-niz
-CHANNEL_USERNAME = "@meoww122134"      # Qrup istifadəçi adınız
-ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" # TON Pul kisəsi adresi
-
-# Render-də proxy lazım olmadığı üçün proxy sətrini sildik və ya şərhə aldıq:
-# apihelper.proxy = {'https': 'http://proxy.server:3128'}
+TOKEN = "8938147451:AAHC2qbk_cMQHZUSoqnWdsL6T4k73ZTXKuw"  # Düzgün Tokeniniz
+ADMIN_ID = 8591374417                  
+CHANNEL_USERNAME = "@meoww122134"      
+ADMIN_WALLET = "UQCgPJ6q8eKxDsMsijRe0UFkgDlRf654olp78dzIxrQYdfoh" 
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -47,19 +44,10 @@ def init_db():
             user_id INTEGER PRIMARY KEY,
             balance REAL DEFAULT 0.0,
             ref_balance REAL DEFAULT 0.0,
-            referred_by INTEGER
+            referred_by INTEGER,
+            last_bonus TEXT
         )
     ''')
-    
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN ref_balance REAL DEFAULT 0.0")
-    except:
-        pass
-
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
-    except:
-        pass
     
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tasks (
@@ -80,6 +68,23 @@ def init_db():
         )
     ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS promo_codes (
+            code TEXT PRIMARY KEY,
+            reward REAL,
+            max_uses INTEGER,
+            used_count INTEGER DEFAULT 0
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_promos (
+            user_id INTEGER,
+            code TEXT,
+            PRIMARY KEY (user_id, code)
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -88,7 +93,7 @@ init_db()
 def get_user(user_id):
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT balance, ref_balance, referred_by FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT balance, ref_balance, referred_by, last_bonus FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
     conn.close()
     return user
@@ -98,7 +103,6 @@ def add_user(user_id, referrer_id=None):
     cursor = conn.cursor()
     cursor.execute("INSERT OR IGNORE INTO users (user_id, balance, ref_balance, referred_by) VALUES (?, 0.0, 0.0, ?)", (user_id, referrer_id))
     if referrer_id:
-        # Referal bonusu 0.01 TON olaraq dəyişdirildi
         cursor.execute("UPDATE users SET ref_balance = ref_balance + 0.01 WHERE user_id = ?", (referrer_id,))
         try:
             bot.send_message(referrer_id, "🎉 Congratulations! A new user joined via your referral link: +0.01 TON added to your Referral Balance!")
@@ -122,10 +126,15 @@ def main_keyboard():
     btn_balance = types.KeyboardButton('💰 Balance')
     btn_ref = types.KeyboardButton('🔗 Referral Link')
     btn_tasks = types.KeyboardButton('📋 Earn (Tasks)')
+    btn_bonus = types.KeyboardButton('🎁 Daily Bonus')
+    btn_promo = types.KeyboardButton('🎟️ Promo Code')
+    btn_leaderboard = types.KeyboardButton('🏆 Leaderboard')
+    btn_support = types.KeyboardButton('📞 Support')
     btn_create_task = types.KeyboardButton('➕ Create Task')
     btn_deposit = types.KeyboardButton('💎 Deposit')
     btn_withdraw = types.KeyboardButton('💸 Withdraw')
-    markup.add(btn_balance, btn_ref, btn_tasks, btn_create_task, btn_deposit, btn_withdraw)
+    
+    markup.add(btn_balance, btn_ref, btn_tasks, btn_bonus, btn_promo, btn_leaderboard, btn_support, btn_create_task, btn_deposit, btn_withdraw)
     return markup
 
 def sub_keyboard():
@@ -165,11 +174,166 @@ def start_command(message):
     else:
         welcome_text = (
             "Welcome to Honeyfarm Referral & Task Bot! 🍯\n\n"
-            "Invite friends, complete social tasks, or create your own tasks!"
+            "Invite friends, complete social tasks, claim daily rewards, use promo codes, or contact support!"
         )
         bot.send_message(message.chat.id, welcome_text, reply_markup=main_keyboard(), parse_mode="Markdown")
 
-# ADMIN: Bütün istifadəçilərin balansını göstərən komut
+# ADMIN: Yeni promokod yaratmaq
+@bot.message_handler(commands=['createpromo'])
+def create_promo(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    args = message.text.split()
+    if len(args) < 3:
+        bot.reply_to(message, "❌ İstifadə qaydası:\n`/createpromo KOD MƏBLƏĞ`\nMəsələn: `/createpromo HONEY2026 0.05`", parse_mode="Markdown")
+        return
+        
+    code = args[1].upper()
+    try:
+        reward = float(args[2])
+    except ValueError:
+        bot.reply_to(message, "❌ Məbləğ rəqəm olmalıdır!")
+        return
+        
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT OR REPLACE INTO promo_codes (code, reward, max_uses) VALUES (?, ?, 100)", (code, reward))
+        conn.commit()
+        bot.reply_to(message, f"✅ Promokod yaradıldı!\n🎟️ Kod: `{code}`\n💰 Məbləğ: **{reward} TON**", parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Xəta baş verdi: {e}")
+    conn.close()
+
+# İSTİFADƏÇİ: Admine yaz / Support
+@bot.message_handler(func=lambda message: message.text == '📞 Support')
+def support_start(message):
+    msg = bot.reply_to(message, "✍️ Please write your message or question to the admin:", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_support_message)
+
+def process_support_message(message):
+    user_id = message.from_user.id
+    username = message.from_user.username
+    username_str = f"@{username}" if username else f"ID: {user_id}"
+    user_text = message.text
+    
+    admin_msg = (
+        f"📩 **New Support Message!**\n"
+        f"👤 From: {username_str} (`{user_id}`)\n\n"
+        f"💬 Message:\n{user_text}"
+    )
+    
+    try:
+        bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
+        bot.reply_to(message, "✅ Your message has been sent to the admin! We will reply to you soon.")
+    except Exception as e:
+        bot.reply_to(message, "❌ Failed to send message to admin. Please try again later.")
+
+# İSTİFADƏÇİ: Promokod daxil etməsi
+@bot.message_handler(func=lambda message: message.text == '🎟️ Promo Code')
+def promo_code_start(message):
+    msg = bot.reply_to(message, "🎟️ Please send your promo code:", parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_promo_code)
+
+def process_promo_code(message):
+    code = message.text.strip().upper()
+    user_id = message.from_user.id
+    
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT reward, used_count, max_uses FROM promo_codes WHERE code = ?", (code,))
+    promo = cursor.fetchone()
+    
+    if not promo:
+        bot.reply_to(message, "❌ Invalid or expired promo code!")
+        conn.close()
+        return
+        
+    reward, used_count, max_uses = promo
+    
+    cursor.execute("SELECT * FROM user_promos WHERE user_id = ? AND code = ?", (user_id, code))
+    already_used = cursor.fetchone()
+    
+    if already_used:
+        bot.reply_to(message, "❌ You have already used this promo code!")
+        conn.close()
+        return
+        
+    if used_count >= max_uses:
+        bot.reply_to(message, "❌ This promo code limit has been reached!")
+        conn.close()
+        return
+        
+    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (reward, user_id))
+    cursor.execute("INSERT INTO user_promos (user_id, code) VALUES (?, ?)", (user_id, code))
+    cursor.execute("UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?", (code,))
+    conn.commit()
+    conn.close()
+    
+    bot.reply_to(message, f"🎉 **Promo Code Activated Successfully!**\n\nYou received **+{reward} TON** in your main balance!", parse_mode="Markdown")
+
+# GÜNDƏLİK BONUS
+@bot.message_handler(func=lambda message: message.text == '🎁 Daily Bonus')
+def daily_bonus(message):
+    user_id = message.from_user.id
+    user = get_user(user_id)
+    
+    if not user:
+        return
+        
+    last_bonus_str = user[3]
+    now = datetime.now()
+    bonus_amount = 0.005  
+    
+    if last_bonus_str:
+        last_bonus_time = datetime.strptime(last_bonus_str, "%Y-%m-%d %H:%M:%S")
+        if now - last_bonus_time < timedelta(hours=24):
+            remaining = timedelta(hours=24) - (now - last_bonus_time)
+            hours, remainder = divmod(remaining.seconds, 3600)
+            minutes, _ = divmod(remainder, 60)
+            bot.reply_to(message, f"⏳ You have already claimed your daily bonus!\nPlease come back in **{hours}h {minutes}m**.", parse_mode="Markdown")
+            return
+
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET balance = balance + ?, last_bonus = ? WHERE user_id = ?", (bonus_amount, now.strftime("%Y-%m-%d %H:%M:%S"), user_id))
+    conn.commit()
+    conn.close()
+    
+    bot.reply_to(message, f"🎉 **Daily Bonus Claimed!**\n\nYou received **+{bonus_amount} TON** in your main balance. Come back tomorrow for more!", parse_mode="Markdown")
+
+# LİDERLƏR LÖVHƏSİ
+@bot.message_handler(func=lambda message: message.text == '🏆 Leaderboard')
+def show_leaderboard(message):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT referred_by, COUNT(*) as ref_count 
+        FROM users 
+        WHERE referred_by IS NOT NULL 
+        GROUP BY referred_by 
+        ORDER BY ref_count DESC 
+        LIMIT 10
+    """)
+    top_refs = cursor.fetchall()
+    conn.close()
+    
+    if not top_refs:
+        bot.reply_to(message, "🏆 **Top Referral Leaderboard:**\n\nNo referrals yet! Be the first to invite friends!")
+        return
+        
+    text = "🏆 **Top 10 Referral Leaderboard:**\n\n"
+    medals = ["🥇", "🥈", "🥉"] + ["👤"] * 7
+    
+    for idx, (ref_id, count) in enumerate(top_refs):
+        text += f"{medals[idx]} User `{ref_id}`: **{count} referrals**\n"
+        
+    text += "\n🔗 Share your referral link to reach the top!"
+    bot.reply_to(message, text, parse_mode="Markdown")
+
+# ADMIN COMMANDS
 @bot.message_handler(commands=['users'])
 def show_all_users(message):
     user_id = message.from_user.id
@@ -197,7 +361,6 @@ def show_all_users(message):
     else:
         bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
-# ADMIN: Bütün istifadəçilərə toplu mesaj göndərmə komutu (/send mesaj)
 @bot.message_handler(commands=['send'])
 def broadcast_message(message):
     user_id = message.from_user.id
@@ -263,7 +426,7 @@ def callback_check_sub(call):
     
     welcome_text = (
         "Welcome to Honeyfarm Referral & Task Bot! 🍯\n\n"
-        "Invite friends, complete social tasks, or create your own tasks!"
+        "Invite friends, complete social tasks, claim daily rewards, or contact support!"
     )
     bot.send_message(call.message.chat.id, welcome_text, reply_markup=main_keyboard(), parse_mode="Markdown")
 
@@ -282,9 +445,9 @@ def show_balance(message):
     
     msg = (
         f"💳 **Your Balances:**\n\n"
-        f"💎 Main Balance (Withdrawable): **{balance:.2f} TON**\n"
-        f"🔗 Referral Balance (Tasks Only): **{ref_balance:.2f} TON**\n"
-        f"📊 Total Available: **{total:.2f} TON**"
+        f"💎 Main Balance (Withdrawable): **{balance:.3f} TON**\n"
+        f"🔗 Referral Balance (Tasks Only): **{ref_balance:.3f} TON**\n"
+        f"📊 Total Available: **{total:.3f} TON**"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
@@ -574,7 +737,7 @@ def process_withdraw_address(message, balance):
 # ==========================================
 if __name__ == '__main__':
     print("Bot 7/24 modunda başladılır...")
-    keep_alive()  # Render port tələbi üçün Flask serverini işə salır
+    keep_alive()
     while True:
         try:
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
